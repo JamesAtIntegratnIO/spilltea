@@ -1,0 +1,497 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: macos
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up environment
+      shell: bash
+      run: |
+        echo "Setting up environment for ${{ matrix.platform }}"
+        if [[ "${{ matrix.platform }}" == "macos" ]]; then
+          # Update Homebrew and install dependencies
+          brew update
+          # Ensure we have required tools
+          which python3 || brew install python3
+        elif [[ "${{ matrix.platform }}" == "linux" ]]; then
+          # Update package lists
+          sudo apt-get update
+          # Ensure we have required tools
+          sudo apt-get install -y python3 python3-pip curl
+        fi
+
+    - name: Test dependency installation via setup.sh
+      shell: bash
+      run: |
+        echo "=== Testing setup.sh dependency installation ==="
+        chmod +x scripts/setup.sh
+        
+        # Test the dependency installation part only (not the cloning)
+        if [[ "${{ matrix.platform }}" == "macos" ]]; then
+          # Test macOS dependencies
+          echo "Testing macOS dependency installation..."
+          
+          # Check if asciinema can be installed
+          if ! command -v asciinema &> /dev/null; then
+            brew install asciinema
+          fi
+          asciinema --version
+          
+          # Check if pv can be installed  
+          if ! command -v pv &> /dev/null; then
+            brew install pv
+          fi
+          pv --version
+          
+          # Check if agg can be installed
+          if ! command -v agg &> /dev/null; then
+            brew install agg
+          fi
+          agg --version
+          
+        elif [[ "${{ matrix.platform }}" == "linux" ]]; then
+          # Test Linux dependencies
+          echo "Testing Linux dependency installation..."
+          
+          # Install asciinema and pv
+          sudo apt-get install -y python3-pip pv
+          pip3 install asciinema
+          asciinema --version
+          pv --version
+          
+          # Install Rust for agg (GitHub Actions has Rust pre-installed)
+          if ! command -v cargo &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source ~/.cargo/env
+          fi
+          cargo install agg
+          ~/.cargo/bin/agg --version || agg --version
+        fi
+
+    - name: Test global installation methods
+      shell: bash
+      run: |
+        echo "=== Testing installation methods ==="
+        
+        # Test install.sh
+        echo "Testing ./install.sh..."
+        chmod +x install.sh
+        ./install.sh
+        
+        # Verify spilltea command is available
+        if ! command -v spilltea &> /dev/null; then
+          # Check if it's in ~/.local/bin and add to PATH
+          if [[ -f ~/.local/bin/spilltea ]]; then
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
+        fi
+        
+        spilltea --help
+        
+        # Test make install (should work even if already installed)
+        echo "Testing make install..."
+        make install
+        spilltea --version 2>/dev/null || spilltea --help
+
+    - name: Create test demo scripts
+      shell: bash
+      run: |
+        echo "=== Creating test demo scripts ==="
+        
+        # Create a simple test script using demo-magic.sh
+        mkdir -p test-demos
+        cat > test-demos/simple-test.sh << 'EOF'
+        #!/usr/bin/env bash
+        . ../src/demo-magic.sh
+        
+        # Disable wait mode for automated testing
+        NO_WAIT=true
+        TYPE_SPEED=10
+        
+        clear
+        
+        pei "echo 'Starting spilltea demo test...'"
+        pei "echo 'Hello from spilltea!'"
+        pei "echo 'Creating a test file...'"
+        pei "echo 'Hello from spilltea!' > test-output.txt"
+        pei "ls -la test-output.txt"
+        pei "cat test-output.txt"
+        pei "echo 'Demo completed successfully!'"
+        EOF
+        
+        chmod +x test-demos/simple-test.sh
+        
+        # Create a more complex test script
+        cat > test-demos/complex-test.sh << 'EOF'
+        #!/usr/bin/env bash
+        . ../src/demo-magic.sh
+        
+        # Disable wait mode for automated testing
+        NO_WAIT=true
+        TYPE_SPEED=10
+        
+        clear
+        
+        pei "echo 'Complex spilltea demo test...'"
+        pei "echo 'System information:'"
+        pei "uname -a"
+        pei "mkdir -p temp-demo"
+        pei "cd temp-demo"
+        
+        pei "echo 'Creating multiple files...'"
+        pei "echo 'File 1 content' > file_1.txt"
+        pei "echo 'File 2 content' > file_2.txt" 
+        pei "echo 'File 3 content' > file_3.txt"
+        
+        pei "ls -la *.txt"
+        pei "cat file_1.txt"
+        
+        pei "echo 'Cleanup...'"
+        pei "cd .."
+        pei "rm -rf temp-demo"
+        pei "echo 'Complex demo completed!'"
+        EOF
+        
+        chmod +x test-demos/complex-test.sh
+
+    - name: Test spilltea functionality
+      shell: bash
+      run: |
+        echo "=== Testing spilltea functionality ==="
+        
+        # Ensure spilltea is in PATH
+        if ! command -v spilltea &> /dev/null; then
+          export PATH="$HOME/.local/bin:$PATH"
+        fi
+        
+        # Test help command
+        echo "Testing help command..."
+        spilltea --help
+        
+        # Test basic demo recording
+        echo "Testing basic demo recording..."
+        cd test-demos
+        
+        # Record a simple demo (automated execution)
+        spilltea --script simple-test.sh --output simple-demo --cols 80 --rows 24 --record-only
+        
+        # Verify files were created
+        ls -la simple-demo.*
+        
+        # Check if asciinema file exists and has content
+        if [[ -f "simple-demo.cast" ]]; then
+          echo "✅ Asciinema recording created successfully"
+          wc -l simple-demo.cast
+          head -2 simple-demo.cast
+        else
+          echo "❌ Asciinema recording not found"
+          exit 1
+        fi
+        
+        # Check if GIF was created (agg might not work in headless CI)
+        if [[ -f "simple-demo.gif" ]]; then
+          echo "✅ GIF conversion successful"
+          ls -lh simple-demo.gif
+        else
+          echo "⚠️  GIF not created (expected in headless CI environment)"
+        fi
+
+    - name: Test error handling
+      shell: bash
+      run: |
+        echo "=== Testing error handling ==="
+        
+        # Ensure spilltea is in PATH
+        if ! command -v spilltea &> /dev/null; then
+          export PATH="$HOME/.local/bin:$PATH"
+        fi
+        
+        cd test-demos
+        
+        # Test with non-existent script
+        echo "Testing with non-existent script..."
+        if spilltea --script non-existent.sh --output error-test 2>/dev/null; then
+          echo "❌ Should have failed with non-existent script"
+          exit 1
+        else
+          echo "✅ Correctly handled non-existent script"
+        fi
+        
+        # Test with invalid output path
+        echo "Testing with invalid output path..."
+        mkdir -p /tmp/spilltea-test
+        if spilltea --script simple-test.sh --output "/invalid/path/test" 2>/dev/null; then
+          echo "❌ Should have failed with invalid output path"
+          exit 1
+        else
+          echo "✅ Correctly handled invalid output path"
+        fi
+
+    - name: Test examples directory
+      shell: bash
+      run: |
+        echo "=== Testing example scripts ==="
+        
+        # Ensure spilltea is in PATH
+        if ! command -v spilltea &> /dev/null; then
+          export PATH="$HOME/.local/bin:$PATH"
+        fi
+        
+        # Test if examples directory exists and scripts are executable
+        if [[ -d "examples" ]]; then
+          echo "Found examples directory"
+          ls -la examples/
+          
+          # Test basic example if it exists
+          if [[ -f "examples/basic-demo.sh" ]]; then
+            echo "Testing basic example..."
+            chmod +x examples/basic-demo.sh
+            
+            # Run a quick test of the example
+            cd examples
+            spilltea --script basic-demo.sh --output test-basic --timeout 30 --cols 80 --rows 20
+            
+            if [[ -f "test-basic.cast" ]]; then
+              echo "✅ Basic example recording successful"
+              wc -l test-basic.cast
+            else
+              echo "❌ Basic example failed to record"
+              exit 1
+            fi
+          else
+            echo "⚠️  Basic example not found, skipping example tests"
+          fi
+        else
+          echo "⚠️  Examples directory not found, skipping example tests"
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-artifacts-${{ matrix.platform }}
+        path: |
+          test-demos/*.cast
+          test-demos/*.gif
+          examples/*.cast
+          examples/*.gif
+        retention-days: 7
+
+  lint-and-validate:
+    name: Lint and Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Validate shell scripts
+      run: |
+        echo "=== Validating shell scripts ==="
+        
+        # Install shellcheck
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        
+        # Check main scripts
+        echo "Checking main scripts..."
+        shellcheck record-demo || true
+        shellcheck install.sh || true
+        shellcheck scripts/setup.sh || true
+        
+        # Check example scripts
+        if [[ -d "examples" ]]; then
+          echo "Checking example scripts..."
+          for script in examples/*.sh; do
+            if [[ -f "$script" ]]; then
+              shellcheck "$script" || true
+            fi
+          done
+        fi
+    
+    - name: Validate Makefile
+      run: |
+        echo "=== Validating Makefile ==="
+        
+        # Check if Makefile syntax is valid
+        make --dry-run install || echo "Makefile validation completed"
+        
+        # List all available targets
+        echo "Available make targets:"
+        make help 2>/dev/null || grep "^[a-zA-Z]" Makefile | cut -d: -f1 | sort
+
+    - name: Validate documentation
+      run: |
+        echo "=== Validating documentation ==="
+        
+        # Check if README.md exists and has required sections
+        if [[ -f "README.md" ]]; then
+          echo "✅ README.md found"
+          
+          # Check for key sections
+          if grep -q "Installation" README.md; then
+            echo "✅ Installation section found"
+          else
+            echo "❌ Installation section missing"
+          fi
+          
+          if grep -q "Usage" README.md; then
+            echo "✅ Usage section found"
+          else
+            echo "❌ Usage section missing"
+          fi
+          
+          if grep -q "Examples" README.md; then
+            echo "✅ Examples section found"
+          else
+            echo "❌ Examples section missing"
+          fi
+        else
+          echo "❌ README.md not found"
+          exit 1
+        fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Run security checks
+      run: |
+        echo "=== Running security checks ==="
+        
+        # Check for potential security issues in shell scripts
+        echo "Checking for common shell script security issues..."
+        
+        # Look for potential command injection vulnerabilities
+        echo "Checking for unquoted variables..."
+        grep -r '\$[A-Za-z_][A-Za-z0-9_]*[^"]' --include="*.sh" . || echo "No obvious unquoted variables found"
+        
+        # Check for use of eval (potential security risk)
+        echo "Checking for eval usage..."
+        grep -r "eval" --include="*.sh" . || echo "No eval usage found"
+        
+        # Check for wget/curl without verification
+        echo "Checking for insecure downloads..."
+        grep -r "curl.*http://" --include="*.sh" . || echo "No insecure HTTP downloads found"
+        
+        echo "Security scan completed"
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [test]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Full integration test
+      run: |
+        echo "=== Full integration test ==="
+        
+        # Simulate complete user workflow
+        echo "Simulating complete user workflow..."
+        
+        # 1. Install all dependencies
+        sudo apt-get update
+        sudo apt-get install -y python3-pip curl pv
+        pip3 install asciinema
+        
+        # Install Rust and agg
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source ~/.cargo/env
+        cargo install agg
+        
+        # 2. Install spilltea
+        chmod +x install.sh
+        ./install.sh
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        # 3. Create a realistic demo script using demo-magic.sh
+        mkdir -p integration-test
+        cat > integration-test/full-demo.sh << 'EOF'
+        #!/usr/bin/env bash
+        . ../src/demo-magic.sh
+        
+        # Disable wait mode for automated testing
+        NO_WAIT=true
+        TYPE_SPEED=10
+        
+        clear
+        
+        pei "echo '=== Spilltea Integration Test Demo ==='"
+        pei "echo 'This demo tests the complete spilltea workflow'"
+        
+        pei "echo '1. Creating a sample project...'"
+        pei "mkdir -p sample-project"
+        pei "cd sample-project"
+        
+        pei "echo '2. Adding some files...'"
+        pei "echo '# Sample Project' > README.md"
+        pei "echo 'console.log(\"Hello World!\");' > app.js"
+        pei "echo '{\"name\": \"sample-project\", \"version\": \"1.0.0\"}' > package.json"
+        
+        pei "echo '3. Showing project structure...'"
+        pei "ls -la"
+        
+        pei "echo '4. Reading a file...'"
+        pei "cat README.md"
+        
+        pei "echo '5. Cleanup...'"
+        pei "cd .."
+        pei "rm -rf sample-project"
+        
+        pei "echo 'Integration test completed successfully! 🎉'"
+        EOF
+        
+        chmod +x integration-test/full-demo.sh
+        
+        # 4. Run the complete demo
+        cd integration-test
+        spilltea --script full-demo.sh --output integration-demo --cols 100 --rows 30 --record-only
+        
+        # 5. Verify output
+        if [[ -f "integration-demo.cast" ]]; then
+          echo "✅ Integration test recording successful"
+          echo "Recording size: $(wc -c < integration-demo.cast) bytes"
+          echo "Recording lines: $(wc -l < integration-demo.cast) lines"
+        else
+          echo "❌ Integration test failed"
+          exit 1
+        fi
+        
+        # 6. Test GIF generation
+        if [[ -f "integration-demo.gif" ]]; then
+          echo "✅ GIF generation successful"
+          echo "GIF size: $(wc -c < integration-demo.gif) bytes"
+        else
+          echo "⚠️  GIF generation skipped (expected in CI environment)"
+        fi
+        
+        echo "🎉 Full integration test completed successfully!"

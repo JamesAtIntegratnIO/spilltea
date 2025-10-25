@@ -1,0 +1,19 @@
+# Test artifacts
+demo.cast
+demo.gif
+test.cast
+test-output/
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log

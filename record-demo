@@ -1,0 +1,451 @@
+#!/usr/bin/env bash
+
+################################################################################
+# Demo Recording Automation Tool
+# 
+# A generic tool for automating terminal demo recordings using demo-magic.sh
+# 
+# This script automates the entire process of creating demo recordings:
+# 1. Cleans up any existing demo files
+# 2. Records the demo using asciinema 
+# 3. Converts the recording to GIF using agg
+# 4. Optionally copies the result to a specified destination
+#
+# Author: Demo Magic Automation Tool
+# License: MIT
+# Dependencies: asciinema, agg, demo-magic.sh
+################################################################################
+
+set -euo pipefail
+
+# Default configuration - can be overridden by config file or environment variables
+DEFAULT_DEMO_SCRIPT="demo.sh"
+DEFAULT_CAST_FILE="demo.cast"
+DEFAULT_GIF_FILE="demo.gif"
+DEFAULT_DEMO_TITLE="Terminal Demo"
+DEFAULT_OUTPUT_DIR="."
+DEFAULT_FONT_SIZE=14
+DEFAULT_LINE_HEIGHT=1.2
+DEFAULT_COLS=100
+DEFAULT_ROWS=30
+DEFAULT_THEME="monokai"
+DEFAULT_SPEED=1.5
+
+# Load configuration
+DEMO_SCRIPT="${DEMO_SCRIPT:-$DEFAULT_DEMO_SCRIPT}"
+CAST_FILE="${CAST_FILE:-$DEFAULT_CAST_FILE}"
+GIF_FILE="${GIF_FILE:-$DEFAULT_GIF_FILE}"
+DEMO_TITLE="${DEMO_TITLE:-$DEFAULT_DEMO_TITLE}"
+OUTPUT_DIR="${OUTPUT_DIR:-$DEFAULT_OUTPUT_DIR}"
+FONT_SIZE="${FONT_SIZE:-$DEFAULT_FONT_SIZE}"
+LINE_HEIGHT="${LINE_HEIGHT:-$DEFAULT_LINE_HEIGHT}"
+COLS="${COLS:-$DEFAULT_COLS}"
+ROWS="${ROWS:-$DEFAULT_ROWS}"
+THEME="${THEME:-$DEFAULT_THEME}"
+SPEED="${SPEED:-$DEFAULT_SPEED}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${PURPLE}$1${NC}"
+}
+
+# Function to check dependencies
+check_dependencies() {
+    print_status "Checking dependencies..."
+    
+    local missing_deps=()
+    
+    if ! command -v asciinema &> /dev/null; then
+        missing_deps+=("asciinema")
+    fi
+    
+    if ! command -v agg &> /dev/null; then
+        missing_deps+=("agg")
+    fi
+    
+    if ! command -v pv &> /dev/null; then
+        missing_deps+=("pv")
+    fi
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        print_error "Missing dependencies: ${missing_deps[*]}"
+        print_status "Install with:"
+        for dep in "${missing_deps[@]}"; do
+            case $dep in
+                "asciinema")
+                    echo "  # macOS"
+                    echo "  brew install asciinema"
+                    echo "  # Linux"
+                    echo "  pip install asciinema"
+                    ;;
+                "agg")
+                    echo "  # Install agg (asciinema GIF generator)"
+                    echo "  cargo install agg"
+                    ;;
+                "pv")
+                    echo "  # macOS"
+                    echo "  brew install pv"
+                    echo "  # Linux"
+                    echo "  sudo apt install pv  # Debian/Ubuntu"
+                    echo "  sudo yum install pv  # RHEL/CentOS"
+                    ;;
+            esac
+        done
+        exit 1
+    fi
+    
+    print_success "All dependencies found!"
+}
+
+# Function to load configuration file
+load_config() {
+    local config_file="$1"
+    
+    if [ -f "$config_file" ]; then
+        print_status "Loading configuration from $config_file"
+        # shellcheck source=/dev/null
+        source "$config_file"
+        print_success "Configuration loaded!"
+    fi
+}
+
+# Function to clean up previous runs
+cleanup_previous() {
+    print_status "Cleaning up previous demo runs..."
+    
+    # Remove previous cast and gif files
+    rm -f "$CAST_FILE" "$GIF_FILE"
+    
+    # Remove any temporary files matching pattern
+    rm -f *.tmp demo-*.cast demo-*.gif
+    
+    print_success "Cleanup complete!"
+}
+
+# Function to record the demo
+record_demo() {
+    print_status "Recording demo with asciinema..."
+    
+    if [ ! -f "$DEMO_SCRIPT" ]; then
+        print_error "Demo script '$DEMO_SCRIPT' not found!"
+        print_status "Create a demo script using demo-magic.sh functions:"
+        print_status "  pe \"command\"    # Print and execute"
+        print_status "  pei \"command\"   # Print and execute immediately" 
+        print_status "  p \"command\"     # Print only"
+        exit 1
+    fi
+    
+    if [ ! -x "$DEMO_SCRIPT" ]; then
+        print_warning "Demo script is not executable, fixing permissions..."
+        chmod +x "$DEMO_SCRIPT"
+    fi
+    
+    print_status "Starting recording in 3 seconds..."
+    print_status "Demo title: $DEMO_TITLE"
+    print_status "Output file: $CAST_FILE"
+    sleep 3
+    
+    # Record the demo
+    asciinema rec "$CAST_FILE" \
+        --title "$DEMO_TITLE" \
+        --command "./$DEMO_SCRIPT" \
+        --overwrite \
+    
+    if [ $? -eq 0 ]; then
+        print_success "Demo recorded successfully to $CAST_FILE"
+        
+        # Show recording info
+        local duration=$(tail -1 "$CAST_FILE" 2>/dev/null | jq -r ".time // \"unknown\"" 2>/dev/null || echo "unknown")
+        [ "$duration" = "unknown" ] && print_status "Recording duration: $duration" || print_status "Recording duration: ${duration}s"
+    else
+        print_error "Failed to record demo"
+        exit 1
+    fi
+}
+
+# Function to convert to GIF
+convert_to_gif() {
+    print_status "Converting recording to GIF with agg..."
+    
+    if [ ! -f "$CAST_FILE" ]; then
+        print_error "Cast file '$CAST_FILE' not found!"
+        exit 1
+    fi
+    
+    print_status "Conversion settings:"
+    print_status "  Font size: $FONT_SIZE"
+    print_status "  Dimensions: ${COLS}x${ROWS}"
+    print_status "  Theme: $THEME"
+    print_status "  Speed: ${SPEED}x"
+    
+    # Convert with user-configurable settings
+    agg \
+        --font-size "$FONT_SIZE" \
+        --line-height "$LINE_HEIGHT" \
+        --cols "$COLS" \
+        --rows "$ROWS" \
+        --theme "$THEME" \
+        --speed "$SPEED" \
+        "$CAST_FILE" \
+        "$GIF_FILE"
+    
+    if [ $? -eq 0 ]; then
+        print_success "GIF created successfully: $GIF_FILE"
+        
+        # Show file size
+        local size=$(du -h "$GIF_FILE" | cut -f1)
+        print_status "GIF size: $size"
+    else
+        print_error "Failed to convert to GIF"
+        exit 1
+    fi
+}
+
+# Function to copy files to output directory
+copy_to_output() {
+    if [ "$OUTPUT_DIR" != "." ] && [ -n "$OUTPUT_DIR" ]; then
+        print_status "Copying files to output directory: $OUTPUT_DIR"
+        
+        # Create output directory if it doesn't exist
+        mkdir -p "$OUTPUT_DIR"
+        
+        # Copy files
+        if [ -f "$CAST_FILE" ]; then
+            cp "$CAST_FILE" "$OUTPUT_DIR/"
+            print_success "Copied $CAST_FILE to $OUTPUT_DIR/"
+        fi
+        
+        if [ -f "$GIF_FILE" ]; then
+            cp "$GIF_FILE" "$OUTPUT_DIR/"
+            print_success "Copied $GIF_FILE to $OUTPUT_DIR/"
+        fi
+    fi
+}
+
+# Function to show usage
+show_usage() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Automated demo generator using demo-magic.sh for terminal recordings.
+
+OPTIONS:
+    -h, --help              Show this help message
+    -c, --config FILE       Load configuration from file
+    -s, --script FILE       Demo script to record (default: $DEFAULT_DEMO_SCRIPT)
+    -t, --title TITLE       Demo title (default: "$DEFAULT_DEMO_TITLE")
+    -o, --output DIR        Output directory (default: current directory)
+    --cast-file FILE        Output cast filename (default: $DEFAULT_CAST_FILE)
+    --gif-file FILE         Output GIF filename (default: $DEFAULT_GIF_FILE)
+    --clean-only            Only clean up previous runs
+    --record-only           Only record demo, don't convert to GIF
+    --gif-only              Only convert existing .cast file to GIF
+    --no-copy               Don't copy files to output directory
+    
+    GIF Conversion Options:
+    --font-size SIZE        Font size for GIF (default: $DEFAULT_FONT_SIZE)
+    --cols COLS             Terminal columns (default: $DEFAULT_COLS)
+    --rows ROWS             Terminal rows (default: $DEFAULT_ROWS)
+    --theme THEME           Color theme (default: $DEFAULT_THEME)
+    --speed SPEED           Playback speed multiplier (default: ${DEFAULT_SPEED}x)
+
+EXAMPLES:
+    $0                                    # Full pipeline with defaults
+    $0 -s my-demo.sh -t "My Demo"        # Custom script and title
+    $0 --clean-only                      # Just cleanup
+    $0 --record-only                     # Record only
+    $0 --gif-only                        # Convert existing recording
+    $0 -c demo.conf                      # Use configuration file
+
+CONFIGURATION FILE:
+    Create a config file to set defaults:
+    
+    DEMO_SCRIPT="my-demo.sh"
+    DEMO_TITLE="My Awesome Demo"
+    OUTPUT_DIR="/path/to/output"
+    FONT_SIZE=16
+    THEME="solarized-dark"
+    SPEED=2.0
+
+DEMO SCRIPT FORMAT:
+    Your demo script should use demo-magic.sh functions:
+    
+    #!/usr/bin/env bash
+    . ./src/demo-magic.sh
+    
+    clear
+    pe "echo 'Hello World'"
+    pei "ls -la"
+    p "This is just printed, not executed"
+
+For more information about demo-magic.sh functions, see:
+https://github.com/paxtonhare/demo-magic
+EOF
+}
+
+# Main function
+main() {
+    local config_file=""
+    local clean_only=false
+    local record_only=false
+    local gif_only=false
+    local no_copy=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -c|--config)
+                config_file="$2"
+                shift 2
+                ;;
+            -s|--script)
+                DEMO_SCRIPT="$2"
+                shift 2
+                ;;
+            -t|--title)
+                DEMO_TITLE="$2"
+                shift 2
+                ;;
+            -o|--output)
+                OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            --cast-file)
+                CAST_FILE="$2"
+                shift 2
+                ;;
+            --gif-file)
+                GIF_FILE="$2"
+                shift 2
+                ;;
+            --font-size)
+                FONT_SIZE="$2"
+                shift 2
+                ;;
+            --cols)
+                COLS="$2"
+                shift 2
+                ;;
+            --rows)
+                ROWS="$2"
+                shift 2
+                ;;
+            --theme)
+                THEME="$2"
+                shift 2
+                ;;
+            --speed)
+                SPEED="$2"
+                shift 2
+                ;;
+            --clean-only)
+                clean_only=true
+                shift
+                ;;
+            --record-only)
+                record_only=true
+                shift
+                ;;
+            --gif-only)
+                gif_only=true
+                shift
+                ;;
+            --no-copy)
+                no_copy=true
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Load configuration file if specified
+    if [ -n "$config_file" ]; then
+        load_config "$config_file"
+    fi
+    
+    print_header "🎬 Demo Magic Automation Tool"
+    print_header "=============================="
+    echo
+    
+    # Check dependencies first
+    check_dependencies
+    
+    # Execute based on options
+    if [ "$clean_only" = true ]; then
+        cleanup_previous
+        return 0
+    fi
+    
+    if [ "$gif_only" = true ]; then
+        if [ ! -f "$CAST_FILE" ]; then
+            print_error "Cast file '$CAST_FILE' not found! Record demo first."
+            exit 1
+        fi
+        convert_to_gif
+    else
+        # Full pipeline or record-only
+        cleanup_previous
+        record_demo
+        
+        if [ "$record_only" = false ]; then
+            convert_to_gif
+        fi
+    fi
+    
+    # Copy to output directory unless disabled or record-only
+    if [ "$no_copy" = false ] && [ "$record_only" = false ]; then
+        copy_to_output
+    fi
+    
+    echo
+    print_success "Demo generation complete! 🎉"
+    
+    if [ -f "$CAST_FILE" ]; then
+        print_status "Files created:"
+        echo "  📹 $CAST_FILE (asciinema recording)"
+    fi
+    
+    if [ -f "$GIF_FILE" ]; then
+        echo "  🎬 $GIF_FILE (demo GIF)"
+    fi
+    
+    if [ "$OUTPUT_DIR" != "." ] && [ -n "$OUTPUT_DIR" ]; then
+        echo "  📁 Output directory: $OUTPUT_DIR"
+    fi
+}
+
+# Run main function with all arguments
+main "$@"
