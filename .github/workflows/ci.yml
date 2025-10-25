@@ -194,7 +194,7 @@ jobs:
         echo "Testing basic demo recording..."
         
         # Record a simple demo (automated execution) - stay in root directory
-        spilltea --script test-demos/simple-test.sh --output test-demos/simple-demo --cols 80 --rows 24 --record-only
+        spilltea --script test-demos/simple-test.sh --cast-file test-demos/simple-demo.cast --cols 80 --rows 24 --record-only
         
         # Verify files were created
         ls -la test-demos/simple-demo.*
