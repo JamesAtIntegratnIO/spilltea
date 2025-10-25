@@ -170,11 +170,70 @@ record_demo() {
     print_status "Output file: $CAST_FILE"
     sleep 3
     
-    # Record the demo
+    # Determine the correct script path (handle both absolute and relative paths)
+    local script_path="$DEMO_SCRIPT"
+    if [[ ! "$DEMO_SCRIPT" = /* ]]; then
+        # Relative path - add ./
+        script_path="./$DEMO_SCRIPT"
+    fi
+    
+    # Find demo-magic.sh - check if installed globally via SPILLTEA_INSTALL_DIR
+    local demo_magic_path
+    if [[ -n "$SPILLTEA_INSTALL_DIR" ]]; then
+        # Running from global installation
+        demo_magic_path="$SPILLTEA_INSTALL_DIR/src/demo-magic.sh"
+    else
+        # Running from local repository
+        local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        demo_magic_path="$script_dir/src/demo-magic.sh"
+    fi
+    
+    # Verify demo-magic.sh exists
+    if [[ ! -f "$demo_magic_path" ]]; then
+        print_error "demo-magic.sh not found at: $demo_magic_path"
+        return 1
+    fi
+    
+    # Create a temporary wrapper script that sources demo-magic.sh before running user script
+    local temp_wrapper=$(mktemp "${TMPDIR:-/tmp}/spilltea-wrapper.XXXXXX.sh")
+    cat > "$temp_wrapper" << WRAPPER_EOF
+#!/usr/bin/env bash
+###############################################################################
+# Spilltea Demo Wrapper
+# 
+# This wrapper automatically sources demo-magic.sh functions before running
+# your demo script, so you don't need to source it manually.
+#
+# demo-magic.sh - Copyright (c) 2017 Paxton Hare - MIT License
+# Source: https://github.com/paxtonhare/demo-magic
+###############################################################################
+
+# Source demo-magic.sh to make functions available
+if [[ -f "$demo_magic_path" ]]; then
+    . "$demo_magic_path"
+else
+    echo "Error: demo-magic.sh not found at $demo_magic_path" >&2
+    exit 1
+fi
+
+# Now run the user's demo script
+if [[ -f "$script_path" ]]; then
+    . "$script_path"
+else
+    echo "Error: Demo script not found: $script_path" >&2
+    exit 1
+fi
+WRAPPER_EOF
+    chmod +x "$temp_wrapper"
+    
+    # Record the demo using the wrapper
     asciinema rec "$CAST_FILE" \
         --title "$DEMO_TITLE" \
-        --command "./$DEMO_SCRIPT" \
+        --command "$temp_wrapper" \
         --overwrite \
+    
+    # Clean up the temporary wrapper
+    rm -f "$temp_wrapper"
     
     if [ $? -eq 0 ]; then
         print_success "Demo recorded successfully to $CAST_FILE"

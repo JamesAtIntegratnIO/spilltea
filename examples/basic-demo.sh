@@ -5,10 +5,10 @@
 # 
 # This demonstrates the basic functions of demo-magic.sh for creating
 # simple terminal demonstrations.
+#
+# Note: When run with spilltea, demo-magic.sh functions are automatically
+# available. No need to source anything!
 ################################################################################
-
-# Include demo-magic (adjust path as needed)
-. ./src/demo-magic.sh
 
 # Configure demo-magic
 TYPE_SPEED=40

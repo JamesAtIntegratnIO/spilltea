@@ -139,8 +139,11 @@ if [[ ! -f "\$TOOL_DIR/record-demo" ]]; then
     exit 1
 fi
 
-# Change to tool directory and run the main script
-cd "\$TOOL_DIR" && ./record-demo "\$@"
+# Export the tool directory for record-demo to find demo-magic.sh
+export SPILLTEA_INSTALL_DIR="\$TOOL_DIR"
+
+# Run the main script (stay in user's current directory)
+exec "\$TOOL_DIR/record-demo" "\$@"
 EOF
     
     chmod +x "$wrapper_path"

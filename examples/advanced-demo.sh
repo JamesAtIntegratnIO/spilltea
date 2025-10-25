@@ -8,10 +8,10 @@
 # - Multiple sections
 # - Realistic development workflow
 # - Error handling
+#
+# Note: When run with spilltea, demo-magic.sh functions are automatically
+# available. No need to source anything!
 ################################################################################
-
-# Include demo-magic
-. ./src/demo-magic.sh
 
 # Advanced configuration
 TYPE_SPEED=60

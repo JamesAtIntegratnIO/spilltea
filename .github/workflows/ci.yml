@@ -124,7 +124,7 @@ jobs:
         mkdir -p test-demos
         cat > test-demos/simple-test.sh << 'EOF'
         #!/usr/bin/env bash
-        . ./src/demo-magic.sh
+        # Note: demo-magic.sh functions are automatically available when run with spilltea
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -146,7 +146,7 @@ jobs:
         # Create a more complex test script
         cat > test-demos/complex-test.sh << 'EOF'
         #!/usr/bin/env bash
-        . ./src/demo-magic.sh
+        # Note: demo-magic.sh functions are automatically available when run with spilltea
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -268,7 +268,7 @@ jobs:
             # Create an automated version of the example for CI testing
             cat > examples/ci-basic-demo.sh << 'EOF'
         #!/usr/bin/env bash
-        . ./src/demo-magic.sh
+        # Note: demo-magic.sh functions are automatically available when run with spilltea
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -454,7 +454,7 @@ jobs:
         mkdir -p integration-test
         cat > integration-test/full-demo.sh << 'EOF'
         #!/usr/bin/env bash
-        . ./src/demo-magic.sh
+        # Note: demo-magic.sh functions are automatically available when run with spilltea
         
         # Disable wait mode for automated testing
         NO_WAIT=true
