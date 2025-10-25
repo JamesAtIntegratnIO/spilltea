@@ -195,7 +195,9 @@ record_demo() {
     fi
     
     # Create a temporary wrapper script that sources demo-magic.sh before running user script
-    local temp_wrapper=$(mktemp "${TMPDIR:-/tmp}/spilltea-wrapper.XXXXXX.sh")
+    local temp_wrapper=$(mktemp "${TMPDIR:-/tmp}/spilltea-wrapper-XXXXXX")
+    mv "$temp_wrapper" "$temp_wrapper.sh"
+    temp_wrapper="$temp_wrapper.sh"
     cat > "$temp_wrapper" << WRAPPER_EOF
 #!/usr/bin/env bash
 ###############################################################################
