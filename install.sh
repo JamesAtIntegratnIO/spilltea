@@ -11,6 +11,7 @@
 #   ./install.sh --global           # Install to /usr/local/bin (requires sudo)  
 #   ./install.sh --path /custom     # Install to custom directory
 #   ./install.sh --uninstall        # Remove installation
+#   ./install.sh --force            # Force reinstall without prompting
 ################################################################################
 
 set -euo pipefail
@@ -150,6 +151,7 @@ EOF
 install_tool() {
     local install_dir="$1"
     local force_global="$2"
+    local force_reinstall="$3"
     
     print_header "🎬 Installing Demo Magic Automation Tool"
     print_header "========================================"
@@ -173,14 +175,20 @@ install_tool() {
     
     # Check if tool is already installed
     if [[ -f "$install_dir/$TOOL_NAME" ]]; then
-        print_warning "Tool is already installed at $install_dir/$TOOL_NAME"
-        read -p "Do you want to reinstall? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_status "Installation cancelled."
-            exit 0
+        if [[ "$force_reinstall" == "true" ]]; then
+            print_warning "Tool is already installed at $install_dir/$TOOL_NAME"
+            print_status "Force reinstall requested, removing existing installation..."
+            rm -f "$install_dir/$TOOL_NAME"
+        else
+            print_warning "Tool is already installed at $install_dir/$TOOL_NAME"
+            read -p "Do you want to reinstall? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Installation cancelled."
+                exit 0
+            fi
+            rm -f "$install_dir/$TOOL_NAME"
         fi
-        rm -f "$install_dir/$TOOL_NAME"
     fi
     
     # Create wrapper script
@@ -271,6 +279,7 @@ OPTIONS:
     --global            Install globally to /usr/local/bin (requires sudo)
     --path DIR          Install to custom directory
     --uninstall         Remove existing installations
+    --force             Force reinstall without prompting (useful for CI)
     
 EXAMPLES:
     $0                      # Install to ~/.local/bin (recommended)
@@ -296,6 +305,7 @@ main() {
     local install_dir="$DEFAULT_INSTALL_DIR"
     local force_global=false
     local do_uninstall=false
+    local force_reinstall=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -317,6 +327,10 @@ main() {
                 do_uninstall=true
                 shift
                 ;;
+            --force)
+                force_reinstall=true
+                shift
+                ;;
             *)
                 print_error "Unknown option: $1"
                 show_usage
@@ -335,7 +349,7 @@ main() {
             exit 1
         fi
         
-        install_tool "$install_dir" "$force_global"
+        install_tool "$install_dir" "$force_global" "$force_reinstall"
     fi
 }
 

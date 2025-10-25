@@ -121,7 +121,7 @@ setup:
 # Installation targets
 install:
 	@echo "📦 Installing spilltea for current user..."
-	@./install.sh
+	@./install.sh --force
 
 install-global:
 	@echo "📦 Installing spilltea system-wide..."

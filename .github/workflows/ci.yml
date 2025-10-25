@@ -97,7 +97,7 @@ jobs:
         # Test install.sh
         echo "Testing ./install.sh..."
         chmod +x install.sh
-        ./install.sh
+        ./install.sh --force
         
         # Verify spilltea command is available
         if ! command -v spilltea &> /dev/null; then
