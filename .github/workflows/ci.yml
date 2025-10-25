@@ -265,8 +265,30 @@ jobs:
             echo "Testing basic example..."
             chmod +x examples/basic-demo.sh
             
+            # Create an automated version of the example for CI testing
+            cat > examples/ci-basic-demo.sh << 'EOF'
+        #!/usr/bin/env bash
+        . ./src/demo-magic.sh
+        
+        # Disable wait mode for automated testing
+        NO_WAIT=true
+        TYPE_SPEED=1
+        
+        # Configure demo-magic
+        DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
+        
+        clear
+        
+        pei "echo 'Hello, World!'"
+        pei "pwd"
+        pei "date"
+        pei "ls -la"
+        pei "echo 'Thanks for watching the basic demo!'"
+        EOF
+            chmod +x examples/ci-basic-demo.sh
+            
             # Run from root directory (example scripts expect to run from repo root)
-            spilltea --script examples/basic-demo.sh --cast-file examples/test-basic.cast --cols 80 --rows 20 --record-only
+            spilltea --script examples/ci-basic-demo.sh --cast-file examples/test-basic.cast --cols 80 --rows 20 --record-only
             
             if [[ -f "examples/test-basic.cast" ]]; then
               echo "✅ Basic example recording successful"
