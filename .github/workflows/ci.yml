@@ -85,7 +85,7 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             source ~/.cargo/env
           fi
-          cargo install agg
+          cargo install --git https://github.com/asciinema/agg
           ~/.cargo/bin/agg --version || agg --version
         fi
 
@@ -192,28 +192,27 @@ jobs:
         
         # Test basic demo recording
         echo "Testing basic demo recording..."
-        cd test-demos
         
-        # Record a simple demo (automated execution)
-        spilltea --script simple-test.sh --output simple-demo --cols 80 --rows 24 --record-only
+        # Record a simple demo (automated execution) - stay in root directory
+        spilltea --script test-demos/simple-test.sh --output test-demos/simple-demo --cols 80 --rows 24 --record-only
         
         # Verify files were created
-        ls -la simple-demo.*
+        ls -la test-demos/simple-demo.*
         
         # Check if asciinema file exists and has content
-        if [[ -f "simple-demo.cast" ]]; then
+        if [[ -f "test-demos/simple-demo.cast" ]]; then
           echo "✅ Asciinema recording created successfully"
-          wc -l simple-demo.cast
-          head -2 simple-demo.cast
+          wc -l test-demos/simple-demo.cast
+          head -2 test-demos/simple-demo.cast
         else
           echo "❌ Asciinema recording not found"
           exit 1
         fi
         
         # Check if GIF was created (agg might not work in headless CI)
-        if [[ -f "simple-demo.gif" ]]; then
+        if [[ -f "test-demos/simple-demo.gif" ]]; then
           echo "✅ GIF conversion successful"
-          ls -lh simple-demo.gif
+          ls -lh test-demos/simple-demo.gif
         else
           echo "⚠️  GIF not created (expected in headless CI environment)"
         fi
