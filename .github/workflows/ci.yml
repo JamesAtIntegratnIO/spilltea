@@ -124,7 +124,7 @@ jobs:
         mkdir -p test-demos
         cat > test-demos/simple-test.sh << 'EOF'
         #!/usr/bin/env bash
-        . ../src/demo-magic.sh
+        . ./src/demo-magic.sh
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -146,7 +146,7 @@ jobs:
         # Create a more complex test script
         cat > test-demos/complex-test.sh << 'EOF'
         #!/usr/bin/env bash
-        . ../src/demo-magic.sh
+        . ./src/demo-magic.sh
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -227,25 +227,22 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
         fi
         
-        cd test-demos
-        
-        # Test with non-existent script
+        # Test with non-existent script (stay in root directory)
         echo "Testing with non-existent script..."
-        if spilltea --script non-existent.sh --output error-test 2>/dev/null; then
+        if spilltea --script test-demos/non-existent.sh --cast-file test-demos/error-test.cast 2>/dev/null; then
           echo "❌ Should have failed with non-existent script"
           exit 1
         else
           echo "✅ Correctly handled non-existent script"
         fi
         
-        # Test with invalid output path
-        echo "Testing with invalid output path..."
-        mkdir -p /tmp/spilltea-test
-        if spilltea --script simple-test.sh --output "/invalid/path/test" 2>/dev/null; then
-          echo "❌ Should have failed with invalid output path"
+        # Test with invalid cast file path
+        echo "Testing with invalid cast file path..."
+        if spilltea --script test-demos/simple-test.sh --cast-file "/invalid/path/test.cast" 2>/dev/null; then
+          echo "❌ Should have failed with invalid cast file path"
           exit 1
         else
-          echo "✅ Correctly handled invalid output path"
+          echo "✅ Correctly handled invalid cast file path"
         fi
 
     - name: Test examples directory
@@ -268,13 +265,12 @@ jobs:
             echo "Testing basic example..."
             chmod +x examples/basic-demo.sh
             
-            # Run a quick test of the example
-            cd examples
-            spilltea --script basic-demo.sh --output test-basic --timeout 30 --cols 80 --rows 20
+            # Run from root directory (example scripts expect to run from repo root)
+            spilltea --script examples/basic-demo.sh --cast-file examples/test-basic.cast --cols 80 --rows 20 --record-only
             
-            if [[ -f "test-basic.cast" ]]; then
+            if [[ -f "examples/test-basic.cast" ]]; then
               echo "✅ Basic example recording successful"
-              wc -l test-basic.cast
+              wc -l examples/test-basic.cast
             else
               echo "❌ Basic example failed to record"
               exit 1
@@ -425,7 +421,7 @@ jobs:
         # Install Rust and agg
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
         source ~/.cargo/env
-        cargo install agg
+        cargo install --git https://github.com/asciinema/agg
         
         # 2. Install spilltea
         chmod +x install.sh
@@ -436,7 +432,7 @@ jobs:
         mkdir -p integration-test
         cat > integration-test/full-demo.sh << 'EOF'
         #!/usr/bin/env bash
-        . ../src/demo-magic.sh
+        . ./src/demo-magic.sh
         
         # Disable wait mode for automated testing
         NO_WAIT=true
@@ -471,24 +467,23 @@ jobs:
         
         chmod +x integration-test/full-demo.sh
         
-        # 4. Run the complete demo
-        cd integration-test
-        spilltea --script full-demo.sh --output integration-demo --cols 100 --rows 30 --record-only
+        # 4. Run the complete demo (from root directory with full path)
+        spilltea --script integration-test/full-demo.sh --cast-file integration-test/integration-demo.cast --cols 100 --rows 30 --record-only
         
         # 5. Verify output
-        if [[ -f "integration-demo.cast" ]]; then
+        if [[ -f "integration-test/integration-demo.cast" ]]; then
           echo "✅ Integration test recording successful"
-          echo "Recording size: $(wc -c < integration-demo.cast) bytes"
-          echo "Recording lines: $(wc -l < integration-demo.cast) lines"
+          echo "Recording size: $(wc -c < integration-test/integration-demo.cast) bytes"
+          echo "Recording lines: $(wc -l < integration-test/integration-demo.cast) lines"
         else
           echo "❌ Integration test failed"
           exit 1
         fi
         
         # 6. Test GIF generation
-        if [[ -f "integration-demo.gif" ]]; then
+        if [[ -f "integration-test/integration-demo.gif" ]]; then
           echo "✅ GIF generation successful"
-          echo "GIF size: $(wc -c < integration-demo.gif) bytes"
+          echo "GIF size: $(wc -c < integration-test/integration-demo.gif) bytes"
         else
           echo "⚠️  GIF generation skipped (expected in CI environment)"
         fi
